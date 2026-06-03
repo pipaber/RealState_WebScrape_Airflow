@@ -1,0 +1,28 @@
+[project]
+name = "urbania-wed-scrapping"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "apache-airflow>=3.2.2",
+    "apache-airflow-providers-microsoft-azure>=13.3.0",
+    "ipykernel>=7.2.0",
+    "pip>=26.1.2",
+    "playwright>=1.60.0",
+    "playwright-stealth>=1.0.6",
+    "pydantic>=2.0",
+]
+
+[project.scripts]
+urbania-scrape = "urbania_scraper.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/urbania_scraper"]
+
+[tool.ty.environment]
+python = ".venv"
