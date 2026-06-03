@@ -2710,6 +2710,18 @@ wheels = [
 ]
 
 [[package]]
+name = "playwright-stealth"
+version = "2.0.3"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "playwright" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/a4/db/6ade5d539c7d151b9defc78fafa8b65aa52352617d0e7699b47008bd801f/playwright_stealth-2.0.3.tar.gz", hash = "sha256:1d8e488fbdd8f190f1269ea8cf5d57d14df3a9f1af1001c41ee3588b2aac3133", size = 25751, upload-time = "2026-04-04T02:50:33.88Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/b5/10/607c409712c02a26c4cb794820514cb7fdaaeac15fb05bed917fb8a354b3/playwright_stealth-2.0.3-py3-none-any.whl", hash = "sha256:1887ade423ab7ff8ae16d363a30a38de0b5817e1e4a29d47b74bf3a0e3dbfcb4", size = 34385, upload-time = "2026-04-04T02:50:35.246Z" },
+]
+
+[[package]]
 name = "pluggy"
 version = "1.6.0"
 source = { registry = "https://pypi.org/simple" }
@@ -3220,29 +3232,6 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/c4/59/a5f38970f9bf07cee96128de79590bb354917914a9be11272cfc7ff26af0/pyzmq-27.1.0-cp314-cp314t-win32.whl", hash = "sha256:1f0b2a577fd770aa6f053211a55d1c47901f4d537389a034c690291485e5fe92", size = 587472, upload-time = "2025-09-08T23:08:58.18Z" },
     { url = "https://files.pythonhosted.org/packages/70/d8/78b1bad170f93fcf5e3536e70e8fadac55030002275c9a29e8f5719185de/pyzmq-27.1.0-cp314-cp314t-win_amd64.whl", hash = "sha256:19c9468ae0437f8074af379e986c5d3d7d7bfe033506af442e8c879732bedbe0", size = 661401, upload-time = "2025-09-08T23:08:59.802Z" },
     { url = "https://files.pythonhosted.org/packages/81/d6/4bfbb40c9a0b42fc53c7cf442f6385db70b40f74a783130c5d0a5aa62228/pyzmq-27.1.0-cp314-cp314t-win_arm64.whl", hash = "sha256:dc5dbf68a7857b59473f7df42650c621d7e8923fb03fa74a526890f4d33cc4d7", size = 575170, upload-time = "2025-09-08T23:09:01.418Z" },
-]
-
-[[package]]
-name = "realstate-webscrape-airflow"
-version = "0.1.0"
-source = { virtual = "." }
-dependencies = [
-    { name = "apache-airflow" },
-    { name = "apache-airflow-providers-microsoft-azure" },
-    { name = "ipykernel" },
-    { name = "pip" },
-    { name = "playwright" },
-    { name = "pydantic" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "apache-airflow", specifier = ">=3.2.2" },
-    { name = "apache-airflow-providers-microsoft-azure", specifier = ">=13.3.0" },
-    { name = "ipykernel", specifier = ">=7.2.0" },
-    { name = "pip", specifier = ">=26.1.2" },
-    { name = "playwright", specifier = ">=1.60.0" },
-    { name = "pydantic", specifier = ">=2.13.4" },
 ]
 
 [[package]]
@@ -3760,6 +3749,31 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/3d/6e/d997a70ee8f4c61f9a7e2f4f8af721cf072a3326848fc881b05187e52558/universal_pathlib-0.3.10.tar.gz", hash = "sha256:4487cbc90730a48cfb64f811d99e14b6faed6d738420cd5f93f59f48e6930bfb", size = 261110, upload-time = "2026-02-22T14:40:58.87Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/dd/1a/5d9a402b39ec892d856bbdd9db502ff73ce28cdf4aff72eb1ce1d6843506/universal_pathlib-0.3.10-py3-none-any.whl", hash = "sha256:dfaf2fb35683d2eb1287a3ed7b215e4d6016aa6eaf339c607023d22f90821c66", size = 83528, upload-time = "2026-02-22T14:40:57.316Z" },
+]
+
+[[package]]
+name = "urbania-wed-scrapping"
+version = "0.1.0"
+source = { editable = "." }
+dependencies = [
+    { name = "apache-airflow" },
+    { name = "apache-airflow-providers-microsoft-azure" },
+    { name = "ipykernel" },
+    { name = "pip" },
+    { name = "playwright" },
+    { name = "playwright-stealth" },
+    { name = "pydantic" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "apache-airflow", specifier = ">=3.2.2" },
+    { name = "apache-airflow-providers-microsoft-azure", specifier = ">=13.3.0" },
+    { name = "ipykernel", specifier = ">=7.2.0" },
+    { name = "pip", specifier = ">=26.1.2" },
+    { name = "playwright", specifier = ">=1.60.0" },
+    { name = "playwright-stealth", specifier = ">=1.0.6" },
+    { name = "pydantic", specifier = ">=2.0" },
 ]
 
 [[package]]
