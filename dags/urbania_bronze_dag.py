@@ -17,8 +17,8 @@ import os
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from airflow.sdk import DAG
-from airflow.providers.standard.operators.python import PythonOperator
+from airflow.sdk import dag, task
+from pendulum import timezone
 
 # --- Configuration (override via Airflow Variables / env) ---------------------
 # Where the scraper writes output (the data volume).
@@ -39,81 +39,69 @@ DEFAULT_ARGS = {
 }
 
 
-def _run_scraper(**context) -> str:
-    """Run the scraper for 2-bed Lima rentals; return the bronze partition dir.
-
-    Returns the directory via XCom so the upload task knows what to push.
-    """
-    import sys
-
-    sys.path.insert(0, SCRAPER_SRC)
-    from urbania_scraper.config import ScrapeConfig
-    from urbania_scraper.scraper import scrape
-    import asyncio
-
-    cfg = ScrapeConfig(
-        operation="alquiler",
-        property_type="departamentos",
-        location="lima",
-        bedrooms=2,
-        max_pages=0,           # all pages
-        headless=True,
-        output_root=RAW_ROOT,
-    )
-    summary = asyncio.run(scrape(cfg))
-    if summary["status"] != "success":
-        raise RuntimeError(f"scrape failed: {summary['status']}")
-    # The data file's parent is the partition dir we want to upload.
-    return str(Path(summary["output"]).parent)
-
-
-def _upload_to_azure(**context) -> None:
-    """Upload the run's partition to Azure Blob Storage, mirroring the lake layout.
-
-    Requires an Airflow connection named by ``AZURE_CONN_ID`` (type: Azure Blob
-    Storage) configured with the storage account name + key / SAS / managed
-    identity. No credentials are kept in code.
-    """
-    from airflow.providers.microsoft.azure.hooks.wasb import WasbHook
-
-    partition_dir = Path(context["ti"].xcom_pull(task_ids="scrape_urbania"))
-    hook = WasbHook(wasb_conn_id=AZURE_CONN_ID)
-    # Ensure the target container exists (idempotent: no-op if already present).
-    hook.create_container(AZURE_CONTAINER)
-    uploaded = 0
-    for f in partition_dir.rglob("*"):
-        if f.is_file():
-            # Keep the partition path under the container so the lake layout
-            # (source=.../operation=.../.../ingest_date=.../*.jsonl) is preserved.
-            blob_name = str(f.relative_to(RAW_ROOT))
-            hook.load_file(
-                file_path=str(f),
-                container_name=AZURE_CONTAINER,
-                blob_name=blob_name,
-                overwrite=True,
-            )
-            uploaded += 1
-
-    print(f"Uploaded {uploaded} files to Azure container '{AZURE_CONTAINER}'.")
-
-
-with DAG(
+@dag(
     dag_id="urbania_bronze",
     description="Scrape urbania.pe 2-bed Lima rentals and land them in Azure bronze.",
     default_args=DEFAULT_ARGS,
     schedule="@daily",
-    start_date=datetime(2026, 6, 1),
+    start_date=datetime(2026, 6, 1, tzinfo=timezone("America/Lima")),
     catchup=False,
     max_active_runs=1,  # no overlapping runs writing the same partition
     tags=["urbania", "bronze", "scraping"],
-) as dag:
-    scrape_urbania = PythonOperator(
-        task_id="scrape_urbania",
-        python_callable=_run_scraper,
-    )
-    upload_to_azure = PythonOperator(
-        task_id="upload_to_azure",
-        python_callable=_upload_to_azure,
-    )
+)
+def urbania_bronze():
+    """Scrape Urbania and upload the bronze partition to Azure."""
 
-    scrape_urbania >> upload_to_azure
+    @task
+    def scrape_urbania() -> str:
+        """Run the scraper and return the bronze partition directory."""
+        import asyncio
+        import sys
+
+        sys.path.insert(0, SCRAPER_SRC)
+        from urbania_scraper.config import ScrapeConfig
+        from urbania_scraper.scraper import scrape
+
+        cfg = ScrapeConfig(
+            operation="alquiler",
+            property_type="departamentos",
+            location="lima",
+            bedrooms=2,
+            max_pages=0,  # all pages
+            headless=True,
+            output_root=RAW_ROOT,
+        )
+        summary = asyncio.run(scrape(cfg))
+        if summary["status"] != "success":
+            raise RuntimeError(f"scrape failed: {summary['status']}")
+        # The data file's parent is the partition dir we want to upload.
+        return str(Path(summary["output"]).parent)
+
+    @task
+    def upload_to_azure(partition_dir: str) -> None:
+        """Upload the run's partition to Azure Blob Storage."""
+        from airflow.providers.microsoft.azure.hooks.wasb import WasbHook
+
+        partition_dir = Path(partition_dir)
+        hook = WasbHook(wasb_conn_id=AZURE_CONN_ID)
+        # Ensure the target container exists (idempotent: no-op if already present).
+        hook.create_container(AZURE_CONTAINER)
+        uploaded = 0
+        for f in partition_dir.rglob("*"):
+            if f.is_file():
+                # Preserve the lake layout under the target container.
+                blob_name = str(f.relative_to(RAW_ROOT))
+                hook.load_file(
+                    file_path=str(f),
+                    container_name=AZURE_CONTAINER,
+                    blob_name=blob_name,
+                    overwrite=True,
+                )
+                uploaded += 1
+
+        print(f"Uploaded {uploaded} files to Azure container '{AZURE_CONTAINER}'.")
+
+    upload_to_azure(scrape_urbania())
+
+
+dag = urbania_bronze()
