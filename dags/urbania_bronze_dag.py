@@ -22,16 +22,16 @@ from airflow.sdk import dag, task
 from pendulum import timezone
 
 # --- Configuration (override via Airflow Variables / env) ---------------------
-# Where the scraper writes output (the data volume).
-PROJECT_DIR = os.environ.get("URBANIA_PROJECT_DIR", "/opt/airflow/data/g1_data")
-RAW_ROOT = Path(PROJECT_DIR) / "raw" / "G1"
+# Mounted Airflow data volume root inside the container.
+DATA_DIR = Path(os.environ.get("URBANIA_PROJECT_DIR", "/opt/airflow/data"))
+RAW_ROOT = DATA_DIR / "raw" / "airflow" / "G1"
 
 # Where the urbania_scraper source lives in the image (Dockerfile: COPY src ./src).
-# Kept separate from PROJECT_DIR, which points at the mounted data volume.
+# Kept separate from DATA_DIR, which points at the mounted data volume.
 SCRAPER_SRC = os.environ.get("URBANIA_SRC", "/opt/airflow/src")
 
-AZURE_CONN_ID = "azure_blob_storage"   # configure in Airflow Connections
-AZURE_CONTAINER = "airflow"
+AZURE_CONN_ID = "utec_blob_storage"   # configure in Airflow Connections
+AZURE_CONTAINER = "datalake"
 logger = logging.getLogger(__name__)
 
 DEFAULT_ARGS = {
@@ -120,8 +120,8 @@ def urbania_bronze():
         uploaded = 0
         for f in partition_dir.rglob("*"):
             if f.is_file():
-                # Preserve the lake layout under the target container.
-                blob_name = str(f.relative_to(RAW_ROOT))
+                # Preserve the full lake path: raw/airflow/G1/... under the container.
+                blob_name = str(f.relative_to(DATA_DIR))
                 logger.debug("Uploading file to Azure Blob Storage: %s -> %s", f, blob_name)
                 hook.load_file(
                     file_path=str(f),
