@@ -1,9 +1,10 @@
 # Databricks notebook source
 # MAGIC %md
-# MAGIC # Gold: Lima rental market by district and day
-# MAGIC Aggregates silver into the metrics the project brief calls out: price
-# MAGIC levels, price per m², and supply by district, trackable over
-# MAGIC `ingest_date`. Recomputed in full from silver on every run.
+# MAGIC # Gold: mercado de alquiler de Lima por distrito y día
+# MAGIC Agrega silver en las métricas que pide el brief del proyecto: niveles
+# MAGIC de precio, precio por m² y oferta por distrito, trackeables en el
+# MAGIC tiempo con `ingest_date`. Se recalcula por completo desde silver en
+# MAGIC cada corrida.
 
 # COMMAND ----------
 
@@ -14,9 +15,10 @@
 from pyspark.sql import functions as F
 
 catalog = params['catalog']
-schema = params['schema']
-silver_fqn = f"{catalog}.{schema}.{params['silver_table']}"
-gold_fqn = f"{catalog}.{schema}.{params['gold_table']}"
+silver_fqn = f"{catalog}.{params['silver_schema']}.{params['silver_table']}"
+gold_fqn = f"{catalog}.{params['gold_schema']}.{params['gold_table']}"
+
+spark.sql(f"CREATE SCHEMA IF NOT EXISTS `{catalog}`.`{params['gold_schema']}`")
 
 silver_df = spark.table(silver_fqn)
 
@@ -49,4 +51,4 @@ display(gold_df)
     .option("overwriteSchema", "true")
     .saveAsTable(gold_fqn)
 )
-print(f"Wrote {gold_df.count()} rows to {gold_fqn}.")
+print(f"Se escribieron {gold_df.count()} filas en {gold_fqn}.")

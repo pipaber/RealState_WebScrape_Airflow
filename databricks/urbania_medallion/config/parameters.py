@@ -1,13 +1,17 @@
 # Databricks notebook source
 # MAGIC %md
-# MAGIC # Config: pipeline parameters
-# MAGIC Single source of truth for the medallion pipeline. Loaded by every layer
-# MAGIC notebook via `%run ./config/parameters`.
+# MAGIC # Configuración: parámetros del pipeline
+# MAGIC Única fuente de verdad para el pipeline medallion. Se carga en cada
+# MAGIC notebook de capa con `%run ./config/parameters`.
 # MAGIC
-# MAGIC `source_path` is discovered automatically: it walks the Hive-style
-# MAGIC partitions under `raw/airflow/G1/source=urbania/` and picks the most
-# MAGIC recently modified `.jsonl` file, so you don't have to hardcode a run_id
-# MAGIC or ingest_date by hand.
+# MAGIC `source_path` se descubre automáticamente: recorre las particiones
+# MAGIC estilo Hive bajo `raw/airflow/G1/source=urbania/` y elige el archivo
+# MAGIC `.jsonl` modificado más recientemente, para no tener que escribir a
+# MAGIC mano un run_id o ingest_date.
+# MAGIC
+# MAGIC Las tablas viven en los esquemas compartidos `bronze` / `silver` / `gold`
+# MAGIC del catálogo `g101_catalog`; `prefix` se usa como prefijo del nombre de
+# MAGIC tabla para no chocar con las de otros estudiantes.
 
 # COMMAND ----------
 
@@ -15,7 +19,7 @@ BASE_RAW_PATH = "abfss://datalake@stdemdsai.dfs.core.windows.net/raw/airflow/G1/
 
 
 def _find_latest_jsonl(path: str):
-    """Recursively walk the Hive-style partitions and return the newest .jsonl FileInfo."""
+    """Recorre recursivamente las particiones estilo Hive y devuelve el FileInfo del .jsonl más reciente."""
     latest = None
     for entry in dbutils.fs.ls(path):
         if entry.isDir():
@@ -31,15 +35,19 @@ def _find_latest_jsonl(path: str):
 
 _latest_file = _find_latest_jsonl(BASE_RAW_PATH)
 if _latest_file is None:
-    raise FileNotFoundError(f"No .jsonl files found under {BASE_RAW_PATH}")
+    raise FileNotFoundError(f"No se encontraron archivos .jsonl bajo {BASE_RAW_PATH}")
+
+prefix = 'pipaber'
 
 params = {
     'catalog': 'g101_catalog',
-    'prefix': 'pipaber',
+    'prefix': prefix,
     'source_path': _latest_file.path,
-    'schema': 'pipaber',
-    'bronze_table': 'bronze_urbania',
-    'silver_table': 'silver_urbania',
-    'gold_table': 'gold_urbania',
+    'bronze_schema': 'bronze',
+    'silver_schema': 'silver',
+    'gold_schema': 'gold',
+    'bronze_table': f'{prefix}_urbania',
+    'silver_table': f'{prefix}_urbania',
+    'gold_table': f'{prefix}_urbania',
 }
-print('Dictionary imported: params')
+print('Diccionario importado: params')
