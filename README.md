@@ -1,12 +1,29 @@
-# urbania.pe rental scraper — bronze layer
+# Urbania Rental Data Product — Airflow + Databricks
 
-Scrapes apartment rental listings from [urbania.pe](https://urbania.pe) and lands
-them as **raw JSON Lines** in a partitioned layout, ready for an Apache Airflow
-DAG to sync to **Azure Blob Storage**. This is the **bronze layer** of a data
-pipeline: data is kept raw / minimally transformed; cleaning and numeric
-normalization belong to a later silver layer.
+End-to-end Data Product for Lima's residential rental market. Apache Airflow
+scrapes 1–4 bedroom apartment listings from [urbania.pe](https://urbania.pe) and
+lands immutable raw JSON Lines in Azure Blob Storage. Databricks then publishes
+idempotent Delta Bronze, validated Silver snapshots, governed Gold metrics, and
+decision-oriented static and D3.js visualizations.
 
-## Project brief — First release (G1)
+## Documentation map
+
+- [Databricks implementation and execution guide](databricks/README.md)
+- [Data Mesh and Data Product plan](databricks/PLAN_DATA_MESH.md)
+- [Visualization guide](docs/LIMA_BUBBLE_MAP.md)
+- [Stage confirmations](databricks/ETAPA_1_CONFIRMACIONES.md)
+
+```mermaid
+flowchart LR
+    U["Urbania"] --> A["Airflow"]
+    A --> R["Azure Raw"]
+    R --> B["Databricks Bronze"]
+    B --> S["Silver + quality"]
+    S --> G["Gold Data Product"]
+    G --> V["PNG + D3.js"]
+```
+
+## Project brief — ingestion foundation (G1)
 
 **Category:** Real Estate.
 
@@ -51,7 +68,7 @@ instead of `alquiler`, or more bedroom counts) without changing the architecture
    in the lake plus a manifest. *(Verified: a run produced **1,141 listings** across
    **42 pages** in ~3 min — see [Is the DAG running correctly?](#is-the-dag-running-correctly).)*
 
-### Scope (raw zone only — no transformation)
+### Scope of the Airflow ingestion component
 
 In scope (this release):
 
@@ -59,14 +76,15 @@ In scope (this release):
 - Writing **NDJSON + a run manifest** in Hive-style partitions.
 - A 2-task Airflow DAG that **scrapes** and **uploads to Azure**, on a daily schedule.
 
-Explicitly **out of scope** (left for silver/gold):
+Explicitly **out of scope for Airflow** and implemented downstream in Databricks:
 
 - Parsing `"S/ 2,750"` / `"45 a 60 m²"` / `"1 a 2 dorm."` into typed numerics.
 - Currency normalization, deduplication across days, geocoding, enrichment.
 - Aggregations, dashboards, or models.
 
 > Bronze keeps data raw on purpose: if we discover a parsing bug later, we re-run
-> silver over bronze instead of re-scraping the (hostile) source.
+> Silver over Bronze instead of re-scraping the hostile source. See the
+> [Databricks guide](databricks/README.md) for the implemented downstream layers.
 
 ### Conceptual architecture
 
@@ -193,35 +211,16 @@ scraping recipes all failed in a different way.
 - **Hive partitioning that maps 1:1 to blob paths** makes the lake landing trivial
   and query-ready downstream.
 
-## Next steps toward the final project
+## Implemented Data Product
 
-### How this connects to the future Data Product
+The downstream path is implemented as **Bronze → Silver → Gold → serving** in
+Databricks. Bronze ingests the immutable lake files, Silver publishes typed and
+deduplicated daily snapshots with quarantine and quality results, and Gold
+publishes market, latest-listing, and change outputs.
 
-Bronze is the foundation. The path to a product is **bronze → silver → gold →
-serving**: scheduled transformations (dbt / Spark) read the raw partitions, clean
-and type them into silver, aggregate them into gold marts in a warehouse
-(Synapse / Databricks / Microsoft Fabric), and expose those via a **BI dashboard**
-(market monitor) and/or a **rent-estimation model/API**. Because bronze is immutable
-and dated, every downstream table is reproducible and auditable from the lake.
-
-### Tables that might emerge in Silver / Gold
-
-**Silver (cleaned, typed, deduplicated):**
-
-- `listings_clean` — one typed row per listing per `ingest_date`: `price_pen`,
-  `currency`, `area_m2_min/max`, `bedrooms_min/max`, `bathrooms`, `district`, `city`,
-  `is_development`, parsed from the raw strings.
-- `listings_history` — slowly-changing dimension tracking each listing's
-  price/availability across days (appeared / disappeared / changed).
-- `dim_district` — district reference (and later geocoding/coordinates).
-
-**Gold (analytics-ready marts):**
-
-- `fct_market_daily` — district × date: median rent, **median price per m²**,
-  active-listing count, new vs. removed listings.
-- `fct_listing_price_history` — per-listing price trajectory for churn/discount analysis.
-- `agg_amenity_premium` — rent uplift associated with amenities (gym, pool, …).
-- `dim_district` / `dim_amenity` — conformed dimensions feeding the dashboard & model.
+The complete object inventory, Job order, widgets, idempotency guarantees,
+quality rules, and visualization export contract are documented in the
+[Databricks implementation guide](databricks/README.md).
 
 ## Architecture
 
