@@ -15,12 +15,12 @@ normalization belong to a later silver layer.
 Lima's apartment rental market is **opaque and has no public, queryable history**.
 Prices, availability, and amenities live inside `urbania.pe`, a JavaScript-rendered,
 bot-protected portal with **no public listings API**. A renter, analyst, or
-investor who wants to answer simple questions — *What is a fair rent for a 2-bedroom
+investor who wants to answer simple questions — *What is a fair rent for a 1-4 bedroom
 in San Isidro? How is price-per-m² evolving by district? Is supply growing or
 shrinking?* — has nowhere to get clean, structured, time-stamped data.
 
 > **Proposed problem statement:** *Build an automated, reproducible daily snapshot
-> of the 2-bedroom apartment rental market in Lima, so that price levels, price per
+> of the 1-4 bedroom apartment rental market in Lima, so that price levels, price per
 > m², and supply by district can be analyzed and tracked over time — turning data
 > that is today trapped behind a bot-protected portal into a governed data asset.*
 
@@ -86,23 +86,26 @@ Explicitly **out of scope** (left for silver/gold):
 ### Tasks in the DAG (`urbania_bronze`)
 
 ```
-scrape_urbania  ──(XCom: partition dir)──▶  upload_to_azure
+scrape_urbania[1..4]  ──(XCom: run artifacts)──▶  upload_to_azure[1..4]
 ```
 
 1. **`scrape_urbania`** (`PythonOperator`) — runs the Playwright scraper for
-   `alquiler · departamentos · lima · bedrooms=2`, paginating until a page yields no
-   new listings; writes `listings_<run_id>.jsonl` + `_manifest_<run_id>.json` to the
-   bronze partition; returns the partition directory via **XCom**.
+   `alquiler · departamentos · lima · bedrooms=1..4`, with one dynamically mapped
+   task per bedroom segment, paginating until a page yields no
+   new listings; writes `listings_<run_id>.jsonl` + `manifest_<run_id>.json` to the
+   raw partition; returns the exact data and manifest paths via **XCom**.
 2. **`upload_to_azure`** (`PythonOperator`) — uses `WasbHook` (Airflow connection
-   `azure_blob_storage`, **no secrets in code**), ensures the container exists
-   (idempotent), and uploads every file in the partition, **preserving the partition
-   path** as the blob name.
+   `utec_blob_storage`, **no secrets in code**), ensures the `datalake` container
+   exists, and uploads exactly the two artifacts from its mapped scrape task. Existing
+   blobs are skipped to keep the raw zone immutable.
 
 ### How often does it run?
 
 `schedule="@daily"`, `start_date=2026-06-01`, `catchup=False`,
 `max_active_runs=1` (no two runs ever write the same partition concurrently).
-Each run produces one dated snapshot. Can be triggered manually from the UI too.
+Each DAG run produces four dated segment snapshots. `max_active_tasks=1` processes
+them sequentially to avoid sending concurrent browser traffic to the source. The DAG
+can also be triggered manually from the UI.
 
 ### Errors considered & handled
 
@@ -117,6 +120,8 @@ Each run produces one dated snapshot. Can be triggered manually from the UI too.
 | Task crash / transient error | Airflow `retries=2`, `retry_delay=5min`. |
 | Re-run / double-dispatch of same `run_id` | NDJSON file opened in **truncate mode** → rewritten cleanly, no appended duplicates (**idempotent**). |
 | Azure container absent | `create_container()` is idempotent (no-op if present). |
+| Airflow task retry | A stable run ID derived from the Airflow run and bedroom segment reuses the same local artifact names. |
+| Blob already uploaded | `check_for_blob()` skips the existing immutable object instead of overwriting it. |
 
 > In the verified run, `upload_to_azure` succeeded on its **3rd attempt** — proof
 > that Airflow's retry policy absorbs transient Azure connection errors as designed.
@@ -126,19 +131,22 @@ Each run produces one dated snapshot. Can be triggered manually from the UI too.
 **Yes.** A manual run on **2026-06-03** completed both tasks successfully:
 
 - `scrape_urbania`: **42 pages**, **1,141 listings**, ~3 min, `status="success"`.
-- `upload_to_azure`: *"Uploaded 2 files to Azure container 'airflow'."*
+- `upload_to_azure`: *"Uploaded 2 files to Azure container 'datalake'."*
 
-Manifest excerpt (`_manifest_20260603T185232Z.json`):
+Manifest shape for a bedroom segment:
 
 ```json
 {
-  "run_id": "20260603T185232Z",
+  "run_id": "scheduled__2026-07-13T05_00_00_00_00_b1",
   "status": "success",
-  "record_count": 1141,
+  "records_written": 1141,
   "pages_scraped": 42,
-  "started_at": "2026-06-03T18:52:32+00:00",
-  "finished_at": "2026-06-03T18:55:33+00:00",
-  "partition": "source=urbania/operation=alquiler/property=departamento/bedrooms=2/ingest_date=2026-06-03"
+  "started_at": "2026-07-13T05:00:00+00:00",
+  "completed_at": "2026-07-13T05:03:01+00:00",
+  "search_params": {"bedrooms": 1},
+  "data_file": "listings_scheduled__2026-07-13T05_00_00_00_00_b1.jsonl",
+  "partition": "source=urbania/operation=alquiler/property=departamento/bedrooms=1/ingest_date=2026-07-13",
+  "error": null
 }
 ```
 
@@ -153,9 +161,9 @@ Per run, two files land in the dated partition (and are mirrored to the Azure
 container at the same path):
 
 ```
-.../source=urbania/operation=alquiler/property=departamento/bedrooms=2/ingest_date=2026-06-03/
+.../source=urbania/operation=alquiler/property=departamento/bedrooms=1/ingest_date=2026-06-03/
     listings_<run_id>.jsonl    # one raw listing per line (NDJSON)
-    _manifest_<run_id>.json    # run stats: counts, params, timings, status
+    manifest_<run_id>.json     # run stats: counts, params, timings, status
 ```
 
 Each NDJSON record keeps listing fields as **raw strings** (`price_raw`,
@@ -220,21 +228,21 @@ and dated, every downstream table is reproducible and auditable from the lake.
 ```mermaid
 flowchart TD
     URB["urbania.pe<br/>bot-protected, JS-rendered"]
-    AZ[("Azure Blob Storage<br/>container: airflow")]
+    AZ[("Azure Blob Storage<br/>container: datalake")]
 
     subgraph DAG["Airflow DAG: urbania_bronze  (@daily, max_active_runs=1)"]
         direction TB
 
         subgraph S["Task 1 — scrape_urbania (PythonOperator)"]
             direction TB
-            P1["Build page URL<br/>alquiler · departamentos · lima · bedrooms=2"]
+            P1["Build page URL<br/>alquiler · departamentos · lima · bedrooms=1..4"]
             P2["New browser context per page<br/>sidesteps Cloudflare 'Un momento…'"]
             P3["Playwright Chromium → goto<br/>wait_until = domcontentloaded"]
             P4["Wait for cards (data-qa^='posting')"]
             P5["Extract in-page via data-qa<br/>price · m² · dorm · street · district · amenities"]
             P6["parse → BronzeListing<br/>dedup by listing_id"]
             P7{"New listings<br/>on page?"}
-            P8["Write listings_RUNID.jsonl<br/>+ _manifest_RUNID.json (truncate)"]
+            P8["Write listings_RUNID.jsonl<br/>+ manifest_RUNID.json (truncate)"]
             P1 --> P2 --> P3 --> P4 --> P5 --> P6 --> P7
             P7 -- "yes → next page" --> P2
             P7 -- "no → last page" --> P8
@@ -244,13 +252,13 @@ flowchart TD
 
         subgraph U["Task 2 — upload_to_azure (PythonOperator)"]
             direction TB
-            U1["WasbHook(conn_id = azure_blob_storage)"]
-            U2["create_container('airflow') — idempotent"]
-            U3["load_file() per file<br/>blob name = partition-relative path"]
+            U1["WasbHook(conn_id = utec_blob_storage)"]
+            U2["create_container('datalake') — idempotent"]
+            U3["check_for_blob + load_file<br/>data file and manifest only"]
             U1 --> U2 --> U3
         end
 
-        S -- "XCom: partition dir" --> U
+        S -- "XCom: exact run artifacts" --> U
     end
 
     URB -. "HTTP 403 to plain requests" .-> P3
@@ -286,7 +294,7 @@ uv run playwright install chromium
 # scrape one page (smoke test)
 uv run python main.py --bedrooms 2 --max-pages 1
 
-# scrape all pages of 2-bedroom Lima rentals
+# scrape all pages of one Lima rental segment (Airflow maps 1-4 automatically)
 uv run python main.py --operation alquiler --property departamentos --location lima --bedrooms 2
 
 # watch the browser (debugging)
@@ -302,9 +310,9 @@ Hive-style partitioning that maps 1:1 to an Azure Blob container path:
 
 ```
 data/bronze/source=urbania/operation=alquiler/property=departamento/
-    bedrooms=2/ingest_date=YYYY-MM-DD/
+    bedrooms=1|2|3|4/ingest_date=YYYY-MM-DD/
         listings_<run_id>.jsonl     # one JSON record per line
-        _manifest_<run_id>.json     # run stats (counts, params, timings, status)
+        manifest_<run_id>.json      # run stats (counts, params, timings, status)
 ```
 
 ### Record fields
@@ -353,7 +361,7 @@ mounted from the repo-root `dags/` directory (the compose `./dags` volume).
 To run it:
 
 1. Build & start: `docker compose up airflow-init` then `docker compose up -d`.
-2. Add an Airflow connection named `azure_blob_storage` (type: Azure Blob
+2. Add an Airflow connection named `utec_blob_storage` (type: Azure Blob
    Storage) with the storage account name + key / SAS / managed identity.
    **No credentials in code.**
 3. Unpause the `urbania_bronze` DAG in the UI (http://localhost:8080).

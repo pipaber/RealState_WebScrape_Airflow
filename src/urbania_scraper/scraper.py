@@ -91,13 +91,14 @@ class UrbaniaScraper:
 
     async def run(self) -> dict:
         """Execute the full scrape; returns a summary dict."""
-        run_id = make_run_id()
+        run_id = self.cfg.run_id or make_run_id()
         started_at = utc_now_iso()
         writer = BronzeWriter(self.cfg, run_id=run_id).open()
 
         seen_ids: set[str] = set()
         pages_scraped = 0
         status = "success"
+        error: str | None = None
 
         async with async_playwright() as p:
             browser = await p.chromium.launch(headless=self.cfg.headless)
@@ -132,15 +133,22 @@ class UrbaniaScraper:
                         random.uniform(self.cfg.min_delay, self.cfg.max_delay)
                     )
             except Exception as exc:  # write what we have, then record failure
-                status = f"error: {exc}"
+                status = "failed"
+                error = str(exc)
                 print(f"[error] {exc}")
             finally:
                 await browser.close()
 
-        writer.close(pages_scraped=pages_scraped, started_at=started_at, status=status)
+        writer.close(
+            pages_scraped=pages_scraped,
+            started_at=started_at,
+            status=status,
+            error=error,
+        )
         return {
             "run_id": run_id,
             "status": status,
+            "error": error,
             "records": writer.count,
             "pages": pages_scraped,
             "output": str(writer.data_path),
