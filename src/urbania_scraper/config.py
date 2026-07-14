@@ -34,6 +34,10 @@ class ScrapeConfig:
     property_type: str = "departamentos"  # departamentos | casas | ...
     location: str = "lima"
     bedrooms: int = 2
+    # Optional stable identifier supplied by an orchestrator. Airflow uses the
+    # same value across task retries, so a retry rewrites the local artifact for
+    # that logical run instead of generating a second run.
+    run_id: str | None = None
 
     max_pages: int = 0                    # 0 = all pages until exhausted
     headless: bool = True
@@ -46,6 +50,15 @@ class ScrapeConfig:
 
     # Output.
     output_root: Path = field(default_factory=lambda: REPO_ROOT / "data" / "bronze")
+
+    def __post_init__(self) -> None:
+        if self.bedrooms not in {1, 2, 3, 4}:
+            raise ValueError("bedrooms must be one of: 1, 2, 3, 4")
+        if self.max_pages < 0:
+            raise ValueError("max_pages must be 0 or a positive integer")
+        if self.min_delay < 0 or self.max_delay < self.min_delay:
+            raise ValueError("delays must satisfy 0 <= min_delay <= max_delay")
+        self.output_root = Path(self.output_root)
 
     def search_path(self) -> str:
         """The slug path, e.g. 'alquiler-de-departamentos-en-lima'."""

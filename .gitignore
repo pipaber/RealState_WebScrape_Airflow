@@ -9,8 +9,13 @@ wheels/
 # Virtual environments
 .venv
 
-# Scraped data (bronze output)
-data/
+# Scraped data (bronze output). Keep the directory itself so Docker Compose
+# always mounts a directory at /opt/airflow/data.
+data/*
+!data/.gitkeep
+
+# Superseded visualization export (the full governed Gold contract replaces it).
+scripts/gold_visualization_export.csv
 
 # Misc
 *.log

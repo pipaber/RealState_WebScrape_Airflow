@@ -3,7 +3,7 @@
 Layout (maps 1:1 to an Azure Blob path so Airflow can upload it unchanged):
 
     data/bronze/source=urbania/operation=alquiler/property=departamento/
-        bedrooms=2/ingest_date=YYYY-MM-DD/listings_<run_id>.jsonl
+        bedrooms=<1|2|3|4>/ingest_date=YYYY-MM-DD/listings_<run_id>.jsonl
 
 Each run writes one data file keyed by ``run_id`` (a new run = a new file). The
 file is opened in truncate mode, so re-executing a run (same ``run_id``) rewrites
@@ -38,7 +38,9 @@ class BronzeWriter:
         self.ingest_date = ingest_date or datetime.now(timezone.utc).strftime("%Y-%m-%d")
         self.partition_dir = self._partition_dir()
         self.data_path = self.partition_dir / f"listings_{run_id}.jsonl"
-        self.manifest_path = self.partition_dir / f"_manifest_{run_id}.json"
+        # Spark and Auto Loader ignore files whose names begin with ``_``.
+        # Keep manifests visible to the Bronze ingestion source.
+        self.manifest_path = self.partition_dir / f"manifest_{run_id}.json"
         self._count = 0
 
     def _partition_dir(self) -> Path:
@@ -69,18 +71,33 @@ class BronzeWriter:
     def count(self) -> int:
         return self._count
 
-    def close(self, *, pages_scraped: int, started_at: str, status: str = "success") -> None:
+    def close(
+        self,
+        *,
+        pages_scraped: int,
+        started_at: str,
+        status: str = "success",
+        error: str | None = None,
+    ) -> None:
         self._fh.close()
+        completed_at = utc_now_iso()
+        relative_data_path = self.data_path.relative_to(self.cfg.output_root).as_posix()
         manifest = {
             "run_id": self.run_id,
             "status": status,
-            "record_count": self._count,
+            "records_written": self._count,
             "pages_scraped": pages_scraped,
             "started_at": started_at,
-            "finished_at": utc_now_iso(),
+            "completed_at": completed_at,
             "search_params": self.cfg.search_params(),
             "data_file": self.data_path.name,
-            "partition": str(self.partition_dir.relative_to(self.cfg.output_root)),
+            "data_path": relative_data_path,
+            "partition": self.partition_dir.relative_to(self.cfg.output_root).as_posix(),
+            "error": error,
+            # Backwards-compatible aliases for manifests already consumed by
+            # notebooks written before the Data Product contract was defined.
+            "record_count": self._count,
+            "finished_at": completed_at,
         }
         self.manifest_path.write_text(
             json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8"
