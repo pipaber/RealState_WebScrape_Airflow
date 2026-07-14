@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Relación entre espacio, alquiler y profundidad de mercado</title>
+  <script src="https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js"></script>
+  <style>
+    :root { color-scheme: light; font-family: Inter, ui-sans-serif, system-ui, sans-serif; color: #172033; background: #fff; }
+    * { box-sizing: border-box; }
+    body { margin: 0; padding: 24px; background: #fff; }
+    header { margin-bottom: 18px; }
+    h1 { margin: 0; font-size: clamp(24px, 3vw, 40px); line-height: 1.08; }
+    .subtitle { margin: 8px 0 0; color: #526176; }
+    .facets { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 22px 28px; }
+    .facet { min-width: 0; }
+    .facet h2 { margin: 0 0 4px; font-size: 18px; }
+    svg { display: block; width: 100%; height: auto; overflow: visible; }
+    .axis text { fill: #526176; font-size: 11px; }
+    .axis path, .axis line { stroke: #cbd5e1; }
+    .grid line { stroke: #e2e8f0; }
+    .grid path { display: none; }
+    .point { cursor: pointer; stroke: #334155; stroke-width: 0.8; opacity: 0.88; }
+    .point.active { stroke: #111827; stroke-width: 3; opacity: 1; }
+    .direct-label { fill: #334155; font-size: 10px; pointer-events: none; }
+    .legend-row { display: flex; flex-wrap: wrap; gap: 22px; align-items: center; margin-top: 16px; color: #526176; font-size: 12px; }
+    .legend-group { display: flex; align-items: center; gap: 8px; }
+    .gradient { width: 190px; height: 12px; background: linear-gradient(90deg, #440154, #31688e, #35b779, #fde725); border: 1px solid #cbd5e1; }
+    .bubble-key { display: inline-flex; align-items: center; gap: 5px; }
+    .bubble { display: inline-block; border-radius: 50%; background: #94a3b8; border: 1px solid #334155; }
+    .detail { margin: 16px 0 0; padding: 11px 14px; background: #f8fafc; border-left: 4px solid #2a788e; color: #334155; }
+    .tooltip { position: fixed; pointer-events: none; visibility: hidden; z-index: 10; background: #172033; color: #fff; padding: 8px 10px; border-radius: 6px; font-size: 12px; box-shadow: 0 8px 24px rgba(15, 23, 42, .22); }
+    footer { margin-top: 18px; color: #64748b; font-size: 12px; }
+    @media (max-width: 900px) { body { padding: 16px; } .facets { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Relación entre espacio, alquiler y profundidad de mercado</h1>
+    <p class="subtitle" id="subtitle"></p>
+  </header>
+  <main class="facets" id="facets"></main>
+  <div class="legend-row" aria-label="Leyendas">
+    <div class="legend-group"><span>Precio mediano por m²</span><span id="color-min"></span><span class="gradient"></span><span id="color-max"></span></div>
+    <div class="legend-group"><span>Tamaño de burbuja</span><span class="bubble-key"><span class="bubble" style="width:12px;height:12px"></span>5</span><span class="bubble-key"><span class="bubble" style="width:19px;height:19px"></span>20</span><span class="bubble-key"><span class="bubble" style="width:27px;height:27px"></span>50 avisos</span></div>
+  </div>
+  <p class="detail" id="detail" aria-live="polite"></p>
+  <div class="tooltip" id="tooltip"></div>
+  <footer>Fuente exclusiva: Gold market_daily_by_district · Moneda PEN · Distritos validados con límites IGN/IDEP</footer>
+
+  <script>
+    const data = {"scrapeDate":"2026-07-14","rows":[{"district":"Ate Vitarte","district_key":"ATE","bedrooms":2,"listing_count":5,"median_price":1400,"avg_area_m2":79.6,"median_price_per_m2":19.18},{"district":"Ate Vitarte","district_key":"ATE","bedrooms":3,"listing_count":3,"median_price":1200,"avg_area_m2":100.67,"median_price_per_m2":13.42},{"district":"Barranco","district_key":"BARRANCO","bedrooms":1,"listing_count":25,"median_price":2500,"avg_area_m2":49.88,"median_price_per_m2":49.14},{"district":"Barranco","district_key":"BARRANCO","bedrooms":2,"listing_count":10,"median_price":2600,"avg_area_m2":61.1,"median_price_per_m2":44.83},{"district":"Barranco","district_key":"BARRANCO","bedrooms":3,"listing_count":4,"median_price":2400,"avg_area_m2":74.25,"median_price_per_m2":33.33},{"district":"Breña","district_key":"BRENA","bedrooms":1,"listing_count":1,"median_price":1200,"avg_area_m2":40.0,"median_price_per_m2":30.0},{"district":"Breña","district_key":"BRENA","bedrooms":2,"listing_count":8,"median_price":1600,"avg_area_m2":66.13,"median_price_per_m2":22.86},{"district":"Breña","district_key":"BRENA","bedrooms":3,"listing_count":3,"median_price":1900,"avg_area_m2":81.67,"median_price_per_m2":21.18},{"district":"Callao","district_key":"CALLAO","bedrooms":1,"listing_count":1,"median_price":1100,"avg_area_m2":77.0,"median_price_per_m2":14.29},{"district":"Callao","district_key":"CALLAO","bedrooms":2,"listing_count":2,"median_price":1500,"avg_area_m2":59.0,"median_price_per_m2":22.39},{"district":"Callao","district_key":"CALLAO","bedrooms":3,"listing_count":2,"median_price":1400,"avg_area_m2":67.5,"median_price_per_m2":22.58},{"district":"Carabayllo","district_key":"CARABAYLLO","bedrooms":2,"listing_count":1,"median_price":550,"avg_area_m2":50.0,"median_price_per_m2":11.0},{"district":"Carabayllo","district_key":"CARABAYLLO","bedrooms":3,"listing_count":3,"median_price":1600,"avg_area_m2":121.67,"median_price_per_m2":11.03},{"district":"Chorrillos","district_key":"CHORRILLOS","bedrooms":1,"listing_count":4,"median_price":1200,"avg_area_m2":44.75,"median_price_per_m2":34.29},{"district":"Chorrillos","district_key":"CHORRILLOS","bedrooms":2,"listing_count":4,"median_price":1600,"avg_area_m2":66.5,"median_price_per_m2":22.5},{"district":"Chorrillos","district_key":"CHORRILLOS","bedrooms":3,"listing_count":8,"median_price":2000,"avg_area_m2":86.88,"median_price_per_m2":25.21},{"district":"Comas","district_key":"COMAS","bedrooms":1,"listing_count":1,"median_price":1500,"avg_area_m2":37.0,"median_price_per_m2":40.54},{"district":"Comas","district_key":"COMAS","bedrooms":2,"listing_count":1,"median_price":2500,"avg_area_m2":84.0,"median_price_per_m2":29.76},{"district":"Comas","district_key":"COMAS","bedrooms":3,"listing_count":8,"median_price":1000,"avg_area_m2":67.25,"median_price_per_m2":18.18},{"district":"El Agustino","district_key":"EL AGUSTINO","bedrooms":2,"listing_count":1,"median_price":1350,"avg_area_m2":59.0,"median_price_per_m2":22.88},{"district":"Independencia","district_key":"INDEPENDENCIA","bedrooms":1,"listing_count":2,"median_price":750,"avg_area_m2":33.0,"median_price_per_m2":22.73},{"district":"Independencia","district_key":"INDEPENDENCIA","bedrooms":2,"listing_count":2,"median_price":1400,"avg_area_m2":82.0,"median_price_per_m2":12.73},{"district":"Independencia","district_key":"INDEPENDENCIA","bedrooms":3,"listing_count":1,"median_price":1199,"avg_area_m2":75.0,"median_price_per_m2":15.99},{"district":"Jesús María","district_key":"JESUS MARIA","bedrooms":1,"listing_count":27,"median_price":2000,"avg_area_m2":44.26,"median_price_per_m2":45.0},{"district":"Jesús María","district_key":"JESUS MARIA","bedrooms":2,"listing_count":22,"median_price":2400,"avg_area_m2":61.5,"median_price_per_m2":39.34},{"district":"Jesús María","district_key":"JESUS MARIA","bedrooms":3,"listing_count":21,"median_price":2850,"avg_area_m2":88.3,"median_price_per_m2":35.29},{"district":"Jesús María","district_key":"JESUS MARIA","bedrooms":4,"listing_count":1,"median_price":3500,"avg_area_m2":96.0,"median_price_per_m2":36.46},{"district":"La Molina","district_key":"LA MOLINA","bedrooms":1,"listing_count":2,"median_price":1200,"avg_area_m2":49.5,"median_price_per_m2":28.33},{"district":"La Molina","district_key":"LA MOLINA","bedrooms":2,"listing_count":3,"median_price":1600,"avg_area_m2":67.0,"median_price_per_m2":26.67},{"district":"La Molina","district_key":"LA MOLINA","bedrooms":3,"listing_count":5,"median_price":2600,"avg_area_m2":106.4,"median_price_per_m2":24.07},{"district":"La Victoria","district_key":"LA VICTORIA","bedrooms":1,"listing_count":5,"median_price":2000,"avg_area_m2":40.2,"median_price_per_m2":45.71},{"district":"La Victoria","district_key":"LA VICTORIA","bedrooms":2,"listing_count":8,"median_price":2101,"avg_area_m2":62.5,"median_price_per_m2":36.92},{"district":"La Victoria","district_key":"LA VICTORIA","bedrooms":3,"listing_count":3,"median_price":2990,"avg_area_m2":81.0,"median_price_per_m2":33.22},{"district":"Lima","district_key":"LIMA","bedrooms":1,"listing_count":1,"median_price":2500,"avg_area_m2":42.0,"median_price_per_m2":59.52},{"district":"Lima","district_key":"LIMA","bedrooms":2,"listing_count":2,"median_price":750,"avg_area_m2":55.5,"median_price_per_m2":12.5},{"district":"Lima","district_key":"LIMA","bedrooms":3,"listing_count":2,"median_price":1450,"avg_area_m2":86.5,"median_price_per_m2":14.5},{"district":"Lima","district_key":"LIMA","bedrooms":4,"listing_count":1,"median_price":2100,"avg_area_m2":136.0,"median_price_per_m2":15.44},{"district":"Lima Cercado","district_key":"LIMA","bedrooms":1,"listing_count":6,"median_price":1450,"avg_area_m2":53.5,"median_price_per_m2":27.54},{"district":"Lima Cercado","district_key":"LIMA","bedrooms":2,"listing_count":9,"median_price":1900,"avg_area_m2":60.89,"median_price_per_m2":31.37},{"district":"Lima Cercado","district_key":"LIMA","bedrooms":3,"listing_count":5,"median_price":2200,"avg_area_m2":87.2,"median_price_per_m2":27.5},{"district":"Lince","district_key":"LINCE","bedrooms":1,"listing_count":14,"median_price":2200,"avg_area_m2":47.93,"median_price_per_m2":47.67},{"district":"Lince","district_key":"LINCE","bedrooms":2,"listing_count":27,"median_price":2300,"avg_area_m2":64.41,"median_price_per_m2":36.81},{"district":"Lince","district_key":"LINCE","bedrooms":3,"listing_count":12,"median_price":3000,"avg_area_m2":79.75,"median_price_per_m2":38.75},{"district":"Los Olivos","district_key":"LOS OLIVOS","bedrooms":1,"listing_count":1,"median_price":1000,"avg_area_m2":50.0,"median_price_per_m2":20.0},{"district":"Los Olivos","district_key":"LOS OLIVOS","bedrooms":2,"listing_count":2,"median_price":1100,"avg_area_m2":60.0,"median_price_per_m2":21.43},{"district":"Los Olivos","district_key":"LOS OLIVOS","bedrooms":3,"listing_count":6,"median_price":1500,"avg_area_m2":92.5,"median_price_per_m2":16.52},{"district":"Lurín","district_key":"LURIN","bedrooms":2,"listing_count":2,"median_price":1200,"avg_area_m2":70.0,"median_price_per_m2":17.14},{"district":"Lurín","district_key":"LURIN","bedrooms":3,"listing_count":1,"median_price":1250,"avg_area_m2":85.0,"median_price_per_m2":14.71},{"district":"Magdalena","district_key":"MAGDALENA DEL MAR","bedrooms":1,"listing_count":12,"median_price":2200,"avg_area_m2":43.67,"median_price_per_m2":50.0},{"district":"Magdalena","district_key":"MAGDALENA DEL MAR","bedrooms":2,"listing_count":14,"median_price":2300,"avg_area_m2":66.64,"median_price_per_m2":34.02},{"district":"Magdalena","district_key":"MAGDALENA DEL MAR","bedrooms":3,"listing_count":11,"median_price":2600,"avg_area_m2":80.0,"median_price_per_m2":34.85},{"district":"Miraflores","district_key":"MIRAFLORES","bedrooms":1,"listing_count":36,"median_price":2500,"avg_area_m2":49.94,"median_price_per_m2":50.94},{"district":"Miraflores","district_key":"MIRAFLORES","bedrooms":2,"listing_count":50,"median_price":3100,"avg_area_m2":82.18,"median_price_per_m2":38.67},{"district":"Miraflores","district_key":"MIRAFLORES","bedrooms":3,"listing_count":13,"median_price":3500,"avg_area_m2":105.69,"median_price_per_m2":41.25},{"district":"Miraflores","district_key":"MIRAFLORES","bedrooms":4,"listing_count":1,"median_price":11000,"avg_area_m2":300.0,"median_price_per_m2":36.67},{"district":"Pueblo Libre","district_key":"PUEBLO LIBRE","bedrooms":1,"listing_count":16,"median_price":1600,"avg_area_m2":43.13,"median_price_per_m2":37.5},{"district":"Pueblo Libre","district_key":"PUEBLO LIBRE","bedrooms":2,"listing_count":21,"median_price":2200,"avg_area_m2":66.48,"median_price_per_m2":32.26},{"district":"Pueblo Libre","district_key":"PUEBLO LIBRE","bedrooms":3,"listing_count":25,"median_price":2400,"avg_area_m2":80.08,"median_price_per_m2":30.38},{"district":"Pueblo Libre","district_key":"PUEBLO LIBRE","bedrooms":4,"listing_count":1,"median_price":3100,"avg_area_m2":110.0,"median_price_per_m2":28.18},{"district":"Punta Negra","district_key":"PUNTA NEGRA","bedrooms":2,"listing_count":1,"median_price":890,"avg_area_m2":40.0,"median_price_per_m2":22.25},{"district":"Rímac","district_key":"RIMAC","bedrooms":2,"listing_count":4,"median_price":1200,"avg_area_m2":54.25,"median_price_per_m2":23.53},{"district":"San Bartolo","district_key":"SAN BARTOLO","bedrooms":1,"listing_count":1,"median_price":3500,"avg_area_m2":60.0,"median_price_per_m2":58.33},{"district":"San Bartolo","district_key":"SAN BARTOLO","bedrooms":3,"listing_count":1,"median_price":4200,"avg_area_m2":100.0,"median_price_per_m2":42.0},{"district":"San Borja","district_key":"SAN BORJA","bedrooms":1,"listing_count":9,"median_price":1350,"avg_area_m2":36.44,"median_price_per_m2":37.14},{"district":"San Borja","district_key":"SAN BORJA","bedrooms":2,"listing_count":7,"median_price":3200,"avg_area_m2":80.86,"median_price_per_m2":50.0},{"district":"San Borja","district_key":"SAN BORJA","bedrooms":3,"listing_count":9,"median_price":3400,"avg_area_m2":108.11,"median_price_per_m2":33.68},{"district":"San Borja","district_key":"SAN BORJA","bedrooms":4,"listing_count":1,"median_price":4200,"avg_area_m2":170.0,"median_price_per_m2":24.71},{"district":"San Isidro","district_key":"SAN ISIDRO","bedrooms":1,"listing_count":28,"median_price":2550,"avg_area_m2":47.13,"median_price_per_m2":56.44},{"district":"San Isidro","district_key":"SAN ISIDRO","bedrooms":2,"listing_count":25,"median_price":3200,"avg_area_m2":67.46,"median_price_per_m2":51.54},{"district":"San Isidro","district_key":"SAN ISIDRO","bedrooms":3,"listing_count":8,"median_price":3500,"avg_area_m2":116.38,"median_price_per_m2":30.0},{"district":"San Juan De Lurigancho","district_key":"SAN JUAN DE LURIGANCHO","bedrooms":1,"listing_count":2,"median_price":850,"avg_area_m2":50.0,"median_price_per_m2":17.0},{"district":"San Juan De Lurigancho","district_key":"SAN JUAN DE LURIGANCHO","bedrooms":2,"listing_count":1,"median_price":1300,"avg_area_m2":65.0,"median_price_per_m2":20.0},{"district":"San Juan De Lurigancho","district_key":"SAN JUAN DE LURIGANCHO","bedrooms":3,"listing_count":1,"median_price":2000,"avg_area_m2":163.0,"median_price_per_m2":12.27},{"district":"San Juan De Lurigancho","district_key":"SAN JUAN DE LURIGANCHO","bedrooms":4,"listing_count":3,"median_price":1800,"avg_area_m2":137.0,"median_price_per_m2":12.59},{"district":"San Juan De Miraflores","district_key":"SAN JUAN DE MIRAFLORES","bedrooms":1,"listing_count":2,"median_price":900,"avg_area_m2":45.0,"median_price_per_m2":18.57},{"district":"San Juan De Miraflores","district_key":"SAN JUAN DE MIRAFLORES","bedrooms":2,"listing_count":2,"median_price":1100,"avg_area_m2":87.5,"median_price_per_m2":16.67},{"district":"San Juan De Miraflores","district_key":"SAN JUAN DE MIRAFLORES","bedrooms":3,"listing_count":1,"median_price":1700,"avg_area_m2":75.0,"median_price_per_m2":22.67},{"district":"San Luis","district_key":"SAN LUIS","bedrooms":1,"listing_count":3,"median_price":1300,"avg_area_m2":43.0,"median_price_per_m2":40.0},{"district":"San Luis","district_key":"SAN LUIS","bedrooms":3,"listing_count":1,"median_price":1850,"avg_area_m2":67.0,"median_price_per_m2":27.61},{"district":"San Martin De Porres","district_key":"SAN MARTIN DE PORRES","bedrooms":3,"listing_count":1,"median_price":1200,"avg_area_m2":140.0,"median_price_per_m2":8.57},{"district":"San Martín De Porres","district_key":"SAN MARTIN DE PORRES","bedrooms":1,"listing_count":1,"median_price":1200,"avg_area_m2":70.0,"median_price_per_m2":17.14},{"district":"San Martín De Porres","district_key":"SAN MARTIN DE PORRES","bedrooms":2,"listing_count":6,"median_price":800,"avg_area_m2":86.67,"median_price_per_m2":10.83},{"district":"San Martín De Porres","district_key":"SAN MARTIN DE PORRES","bedrooms":3,"listing_count":3,"median_price":1000,"avg_area_m2":68.33,"median_price_per_m2":13.08},{"district":"San Martín De Porres","district_key":"SAN MARTIN DE PORRES","bedrooms":4,"listing_count":1,"median_price":1590,"avg_area_m2":110.0,"median_price_per_m2":14.45},{"district":"San Miguel","district_key":"SAN MIGUEL","bedrooms":1,"listing_count":28,"median_price":1650,"avg_area_m2":41.21,"median_price_per_m2":37.62},{"district":"San Miguel","district_key":"SAN MIGUEL","bedrooms":2,"listing_count":24,"median_price":1990,"avg_area_m2":66.54,"median_price_per_m2":30.0},{"district":"San Miguel","district_key":"SAN MIGUEL","bedrooms":3,"listing_count":32,"median_price":2300,"avg_area_m2":80.03,"median_price_per_m2":29.11},{"district":"Santa Anita","district_key":"SANTA ANITA","bedrooms":2,"listing_count":5,"median_price":1800,"avg_area_m2":84.6,"median_price_per_m2":20.15},{"district":"Santa Anita","district_key":"SANTA ANITA","bedrooms":3,"listing_count":2,"median_price":1600,"avg_area_m2":105.0,"median_price_per_m2":17.24},{"district":"Santa Anita","district_key":"SANTA ANITA","bedrooms":4,"listing_count":1,"median_price":2000,"avg_area_m2":97.0,"median_price_per_m2":20.62},{"district":"Santa Rosa","district_key":"SANTA ROSA","bedrooms":1,"listing_count":1,"median_price":850,"avg_area_m2":32.0,"median_price_per_m2":26.56},{"district":"Santa Rosa","district_key":"SANTA ROSA","bedrooms":3,"listing_count":1,"median_price":3850,"avg_area_m2":97.0,"median_price_per_m2":39.69},{"district":"Santiago De Surco","district_key":"SANTIAGO DE SURCO","bedrooms":1,"listing_count":14,"median_price":1300,"avg_area_m2":39.86,"median_price_per_m2":33.33},{"district":"Santiago De Surco","district_key":"SANTIAGO DE SURCO","bedrooms":2,"listing_count":18,"median_price":2250,"avg_area_m2":67.89,"median_price_per_m2":32.47},{"district":"Santiago De Surco","district_key":"SANTIAGO DE SURCO","bedrooms":3,"listing_count":15,"median_price":2500,"avg_area_m2":99.93,"median_price_per_m2":31.17},{"district":"Santiago De Surco","district_key":"SANTIAGO DE SURCO","bedrooms":4,"listing_count":4,"median_price":3200,"avg_area_m2":125.0,"median_price_per_m2":24.62},{"district":"Surquillo","district_key":"SURQUILLO","bedrooms":1,"listing_count":15,"median_price":1850,"avg_area_m2":42.4,"median_price_per_m2":44.05},{"district":"Surquillo","district_key":"SURQUILLO","bedrooms":2,"listing_count":16,"median_price":2300,"avg_area_m2":59.25,"median_price_per_m2":36.76},{"district":"Surquillo","district_key":"SURQUILLO","bedrooms":3,"listing_count":8,"median_price":2700,"avg_area_m2":78.0,"median_price_per_m2":34.62},{"district":"Surquillo","district_key":"SURQUILLO","bedrooms":4,"listing_count":1,"median_price":4300,"avg_area_m2":179.0,"median_price_per_m2":24.02},{"district":"Villa El Salvador","district_key":"VILLA EL SALVADOR","bedrooms":1,"listing_count":1,"median_price":1700,"avg_area_m2":48.0,"median_price_per_m2":35.42},{"district":"Villa El Salvador","district_key":"VILLA EL SALVADOR","bedrooms":2,"listing_count":3,"median_price":1200,"avg_area_m2":62.67,"median_price_per_m2":22.22},{"district":"Villa El Salvador","district_key":"VILLA EL SALVADOR","bedrooms":3,"listing_count":1,"median_price":1500,"avg_area_m2":120.0,"median_price_per_m2":12.5}]};
+    const rows = data.rows;
+    const formatInteger = d3.format(",.0f");
+    const formatOne = d3.format(".1f");
+    const formatCurrency = value => `S/ ${d3.format(",.0f")(value)}`;
+    const areaExtent = d3.extent(rows, row => row.avg_area_m2);
+    const rentExtent = d3.extent(rows, row => row.median_price);
+    const priceM2Extent = d3.extent(rows, row => row.median_price_per_m2);
+    const supplyExtent = d3.extent(rows, row => row.listing_count);
+    const xDomain = [Math.max(1, areaExtent[0] * 0.78), areaExtent[1] * 1.12];
+    const yDomain = [Math.max(100, rentExtent[0] * 0.72), rentExtent[1] * 1.18];
+    const color = d3.scaleSequential(d3.interpolateViridis).domain(priceM2Extent);
+    const radius = d3.scaleSqrt().domain([0, supplyExtent[1]]).range([4, 14]);
+    const tooltip = d3.select("#tooltip");
+    const detail = d3.select("#detail");
+
+    d3.select("#subtitle").text(`Scrape: ${data.scrapeDate} · X = área promedio · Y = alquiler mediano · Color = precio por m² · Burbuja = avisos`);
+    d3.select("#color-min").text(formatCurrency(priceM2Extent[0]));
+    d3.select("#color-max").text(formatCurrency(priceM2Extent[1]));
+
+    function weightedMean(items, field) {
+      return d3.sum(items, row => row[field] * row.listing_count) / d3.sum(items, row => row.listing_count);
+    }
+
+    function selectRow(row) {
+      d3.selectAll(".point").classed("active", item => item.district_key === row.district_key && item.bedrooms === row.bedrooms);
+      detail.text(`${row.district} · ${row.bedrooms} cuarto${row.bedrooms > 1 ? "s" : ""} · ${formatInteger(row.listing_count)} avisos · ${formatOne(row.avg_area_m2)} m² · ${formatCurrency(row.median_price)} alquiler mediano · ${formatCurrency(row.median_price_per_m2)}/m²`);
+    }
+
+    function showTooltip(event, row) {
+      tooltip
+        .style("visibility", "visible")
+        .style("left", `${Math.min(event.clientX + 14, window.innerWidth - 245)}px`)
+        .style("top", `${Math.max(10, event.clientY - 42)}px`)
+        .html(`<strong>${row.district}</strong><br>${row.bedrooms} cuarto${row.bedrooms > 1 ? "s" : ""}<br>${formatInteger(row.listing_count)} avisos<br>${formatOne(row.avg_area_m2)} m² promedio<br>${formatCurrency(row.median_price)} alquiler mediano<br>${formatCurrency(row.median_price_per_m2)}/m²`);
+    }
+
+    const facets = d3.select("#facets");
+    for (const bedrooms of [1, 2, 3, 4]) {
+      const subset = rows.filter(row => row.bedrooms === bedrooms);
+      const section = facets.append("section").attr("class", "facet");
+      section.append("h2").text(`${bedrooms} cuarto${bedrooms > 1 ? "s" : ""} · ${formatInteger(d3.sum(subset, row => row.listing_count))} avisos`);
+      const svg = section.append("svg")
+        .attr("viewBox", "0 0 640 390")
+        .attr("role", "img")
+        .attr("aria-label", `Relación entre área, alquiler y precio por metro cuadrado para ${bedrooms} cuartos`);
+      svg.append("title").text(`Matriz de valor para ${bedrooms} cuartos`);
+      const margin = {top: 12, right: 20, bottom: 54, left: 74};
+      const width = 640 - margin.left - margin.right;
+      const height = 390 - margin.top - margin.bottom;
+      const group = svg.append("g").attr("transform", `translate(${margin.left},${margin.top})`);
+      const x = d3.scaleLog().domain(xDomain).range([0, width]);
+      const y = d3.scaleLog().domain(yDomain).range([height, 0]);
+      const xTicks = [25, 40, 60, 80, 120, 180, 260, 340].filter(value => value >= xDomain[0] && value <= xDomain[1]);
+      const yTicks = [500, 1000, 2000, 4000, 8000, 12000].filter(value => value >= yDomain[0] && value <= yDomain[1]);
+      group.append("g").attr("class", "grid").attr("transform", `translate(0,${height})`).call(d3.axisBottom(x).tickValues(xTicks).tickSize(-height).tickFormat(""));
+      group.append("g").attr("class", "grid").call(d3.axisLeft(y).tickValues(yTicks).tickSize(-width).tickFormat(""));
+      group.append("line").attr("x1", x(weightedMean(subset, "avg_area_m2"))).attr("x2", x(weightedMean(subset, "avg_area_m2"))).attr("y1", 0).attr("y2", height).attr("stroke", "#94a3b8").attr("stroke-dasharray", "5,4");
+      group.append("line").attr("x1", 0).attr("x2", width).attr("y1", y(weightedMean(subset, "median_price"))).attr("y2", y(weightedMean(subset, "median_price"))).attr("stroke", "#94a3b8").attr("stroke-dasharray", "5,4");
+      group.append("g").attr("class", "axis").attr("transform", `translate(0,${height})`).call(d3.axisBottom(x).tickValues(xTicks).tickFormat(d3.format("~g")));
+      group.append("g").attr("class", "axis").call(d3.axisLeft(y).tickValues(yTicks).tickFormat(value => `S/ ${value / 1000}k`));
+      svg.append("text").attr("x", margin.left + width / 2).attr("y", 382).attr("text-anchor", "middle").attr("fill", "#526176").attr("font-size", 12).text("Área promedio (m², escala log)");
+      svg.append("text").attr("transform", "rotate(-90)").attr("x", -(margin.top + height / 2)).attr("y", 15).attr("text-anchor", "middle").attr("fill", "#526176").attr("font-size", 12).text("Alquiler mediano (PEN, escala log)");
+
+      const points = group.selectAll("circle")
+        .data(subset)
+        .join("circle")
+        .attr("class", "point")
+        .attr("cx", row => x(row.avg_area_m2))
+        .attr("cy", row => y(row.median_price))
+        .attr("r", row => radius(row.listing_count))
+        .attr("fill", row => color(row.median_price_per_m2))
+        .on("mouseenter", (event, row) => { selectRow(row); showTooltip(event, row); })
+        .on("mousemove", (event, row) => showTooltip(event, row))
+        .on("mouseleave", () => tooltip.style("visibility", "hidden"))
+        .on("click", (_event, row) => selectRow(row));
+
+      const labels = [...new Map([
+        ...[...subset].sort((a, b) => d3.descending(a.listing_count, b.listing_count)).slice(0, 3),
+        ...[...subset].sort((a, b) => d3.descending(a.median_price, b.median_price)).slice(0, 1)
+      ].map(row => [row.district_key, row])).values()];
+      group.selectAll(".direct-label")
+        .data(labels)
+        .join("text")
+        .attr("class", "direct-label")
+        .attr("x", row => x(row.avg_area_m2) + 7)
+        .attr("y", row => y(row.median_price) - 7)
+        .text(row => row.district);
+    }
+
+    const defaultRow = [...rows].sort((a, b) => d3.descending(a.listing_count, b.listing_count))[0];
+    if (defaultRow) selectRow(defaultRow);
+  </script>
+</body>
+</html>
